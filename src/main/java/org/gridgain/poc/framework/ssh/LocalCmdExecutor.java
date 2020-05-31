@@ -89,7 +89,7 @@ public class LocalCmdExecutor extends AbstractCmdExecutor {
 //
 //            res = runRmtCmd(session, cmd, false);
 //
-//            session.disconnect();
+//            if(session != null) session.disconnect();
 //        }
 //        catch (Exception e) {
 //            LOG.error(String.format("Failed to execute command %s on the host %s", cmd, host));
@@ -146,7 +146,7 @@ public class LocalCmdExecutor extends AbstractCmdExecutor {
 
             channel.disconnect();
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to check file %s on the host %s", path, host), e);
@@ -178,7 +178,7 @@ public class LocalCmdExecutor extends AbstractCmdExecutor {
 //                channel.disconnect();
 //            }
 //
-//            session.disconnect();
+//            if(session != null) session.disconnect();
 //        }
 //        catch (Exception e) {
 //            e.printStackTrace();
@@ -282,7 +282,7 @@ public class LocalCmdExecutor extends AbstractCmdExecutor {
 
             sftpChannel.disconnect();
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to copy file %s on the host %s", src, host), e);
@@ -302,7 +302,7 @@ public class LocalCmdExecutor extends AbstractCmdExecutor {
 
             sftpChannel.disconnect();
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to get file %s from the host %s. Error message: %s", src, host,
@@ -414,7 +414,7 @@ public class LocalCmdExecutor extends AbstractCmdExecutor {
             }
             sftpChannel.disconnect();
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to copy directory %s on the host %s", srcDir, host), e);

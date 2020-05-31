@@ -56,11 +56,14 @@ public abstract class AbstractCmdExecutor extends AbstractWorker {
         this.keyPath = args.getKeyPath();
         this.passPhrase = args.getPassPhrase();
 
-        if (this.user == null || this.keyPath == null || !checkKeyPath(this.keyPath))
-            tryToSetDefaultIdentity();
+//        if (this.user == null || this.keyPath == null || !checkKeyPath(this.keyPath))
+//            tryToSetDefaultIdentity();
     }
 
     protected Session getSession(String host) throws Exception{
+        if (localhost(host))
+            return null;
+
         try {
             java.util.Properties config = new java.util.Properties();
 
@@ -123,6 +126,10 @@ public abstract class AbstractCmdExecutor extends AbstractWorker {
 
     protected void printHelp(){};
 
+    /** */
+    protected boolean localhost(String host){
+        return "localhost".equals(host) || "127.0.0.1".equals(host);
+    }
 
     private boolean checkKeyPath(String keyPath) {
         return new File(keyPath).exists();

@@ -17,6 +17,7 @@
 
 package org.gridgain.poc.framework.worker;
 
+import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -123,6 +124,7 @@ public class StartNodeWorker extends AbstractStartWorker {
 
         try {
             startCmd = getStartCmd(args, host, dateTime, cntr, total, consID);
+//            startCmd = "zsh /Users/olegostanin/IdeaProjects/poc-tester/test.sh";
         }
         catch (Exception e) {
             LOG.error("Failed to get start command.", e);
@@ -318,6 +320,15 @@ public class StartNodeWorker extends AbstractStartWorker {
 
         String logFileName = String.format("%s/%s-%s.log", remoteLogPath, consID, dateTime);
 
+        File logFile = new File(logFileName);
+
+        File logParent = logFile.getParentFile();
+
+        if (!logParent.exists())
+            logParent.mkdirs();
+
+        logFile.createNewFile();
+
         String envVars = String.format("LOG_FILE_NAME=%s POC_TESTER_HOME=%s", logFileName, rmtHome);
 
         String javaHome = args.getDefinedJavaHome() != null ? args.getDefinedJavaHome() :
@@ -360,13 +371,31 @@ public class StartNodeWorker extends AbstractStartWorker {
             throw new Exception();
         }
 
-        String clsPath = String.format("-cp %s/*:%s/*", libPath, pocLibPath);
+        String clsPath = classPath(libPath, pocLibPath);
 
         String startPropPath = String.format("%s/%s", rmtHome, unixStartPath);
 
         String fullParams = fullParams(args, nodeType, startPropPath, taskDirName, cfg, cntr, total);
 
         return String.format("%s %s %s %s %s %s ", envVars, java, targetJvmOpts, clsPath, nodeStartCls, fullParams);
+    }
+
+    private String classPath(String... dirs){
+        StringBuilder sb = new StringBuilder("-cp ");
+
+        for (String dir : dirs) {
+            File root = new File(dir);
+
+            File[] arr = root.listFiles();
+
+            for (File jar : arr)
+                sb.append(jar.getAbsolutePath())
+                    .append(":");
+        }
+
+        String full = sb.toString();
+
+        return full.substring(0, full.length() - 1);
     }
 
     /**

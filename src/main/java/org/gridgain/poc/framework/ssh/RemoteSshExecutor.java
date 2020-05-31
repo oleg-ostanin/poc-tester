@@ -22,7 +22,9 @@ import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.Session;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
@@ -61,9 +63,9 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
 
             LOG.debug("Connected to the host: " + host);
 
-            res = runRmtCmd(session, cmd, true);
+            res = runLocalCommand(session, cmd, true);
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to execute command %s on the host %s", cmd, host), e);
@@ -80,6 +82,10 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
      * @throws InterruptedException If interrupted.
      */
     public CmdResult runLocCmd(String cmd) throws IOException {
+        String jh = "/Library/Java/JavaVirtualMachines/jdk1.8.0_201.jdk/Contents/Home";
+
+        cmd = cmd.replace("${JAVA_HOME}", jh);
+
         LOG.info(String.format("Running cmd %s", cmd));
 
         while (cmd.contains("  "))
@@ -134,9 +140,9 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
 
             LOG.debug("Connected to the host: " + host);
 
-            res = runRmtCmd(session, cmd, false);
+            res = runLocalCommand(session, cmd, false);
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to execute command %s on the host %s", cmd, host));
@@ -180,6 +186,9 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
      * @throws Exception if failed.
      */
     public boolean exists(String host, String path) throws Exception {
+        if (localhost(host))
+            return new File(path).exists();
+
         try {
             Session ssn = getSession(host);
 
@@ -238,7 +247,7 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
                 channel.disconnect();
             }
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to execute commands on the host %s", host), e);
@@ -247,7 +256,9 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
         }
     }
 
-    private List<String> runRmtCmd(Session session, String cmd, boolean getResult) {
+    /** */
+    private List<String> runLocalCommand(Session session, String cmd, boolean getResult) {
+
         List<String> res = new ArrayList<>();
 
         LOG.debug("Running command:");
@@ -258,21 +269,44 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
             LOG.info(cmd);
 
         try {
-            Channel channel = session.openChannel("exec");
-            ((ChannelExec)channel).setCommand(cmd);
+            String jh = "/Library/Java/JavaVirtualMachines/jdk1.8.0_201.jdk/Contents/Home";
 
-            channel.setInputStream(null);
-            ((ChannelExec)channel).setErrStream(System.err);
+            cmd = cmd.replace("${JAVA_HOME}", jh);
 
-            BufferedReader reader = new BufferedReader(new InputStreamReader(channel.getInputStream()));
+            LOG.info(String.format("Running cmd %s", cmd));
 
-            final BufferedReader errReader = new BufferedReader(new InputStreamReader(((ChannelExec)channel).getErrStream()));
+            while (cmd.contains("  "))
+                cmd = cmd.replace("  ", " ");
 
-            channel.connect(SSH_CHANNEL_TIMEOUT);
+            String[] cmdArr = cmd.split(" ");
+
+            String tmpScript = args.getRemoteWorkDir() + "/" + System.currentTimeMillis() + ".sh";
+
+            new File(tmpScript).createNewFile();
+
+            BufferedWriter wr = new BufferedWriter(new FileWriter(new File(tmpScript)));
+
+            wr.write(cmd);
+
+            wr.flush();
+
+            wr.close();
+
+            final ProcessBuilder pb = new ProcessBuilder()
+                .command("zsh", String.format("%s", tmpScript));
+
+            pb.directory(new File(args.getRemoteWorkDir()));
+
+            Process proc = pb.start();
+
+            int exitCode = 0;
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+
+            final BufferedReader errReader = new BufferedReader(new InputStreamReader(proc.getErrorStream()));
 
             Thread errThread = new Thread() {
                 @Override public void run() {
-
                     String errLine;
 
                     try {
@@ -302,7 +336,7 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
             else {
                 int cntr = 0;
                 while ((nextLine = reader.readLine()) != null && cntr++ < 4150) {
-                    LOG.info(nextLine);
+                    LOG.info("325" + nextLine);
 
                     if (included(nextLine))
                         res.add(nextLine);
@@ -320,13 +354,17 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
                 }
             }
 
-            channel.disconnect();
+            try {
+                if(getResult)
+                    exitCode = proc.waitFor();
+            }
+            catch (InterruptedException e) {
+                LOG.error(String.format("Failed to wait for command %s to complete", cmd), e);;
+            }
 
-            int exitStatus = channel.getExitStatus();
+            LOG.debug("Done with exit status: " + exitCode);
 
-            LOG.debug("Done with exit status: " + exitStatus);
-
-            if (exitStatus != 0) {
+            if (exitCode != 0) {
                 if (!res.isEmpty()) {
                     LOG.info("Command output:");
 
@@ -334,6 +372,8 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
                         LOG.info(str);
                 }
             }
+
+            new File(tmpScript).delete();
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -358,7 +398,7 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
 
             sftpChannel.disconnect();
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to copy file %s on the host %s", src, host), e);
@@ -378,7 +418,7 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
 
             sftpChannel.disconnect();
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to get file %s from the host %s. Error message: %s", src, host,
@@ -403,9 +443,9 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
         try {
             Session session = getSession(host);
 
-            runRmtCmd(session, cmd, false);
+            runLocalCommand(session, cmd, false);
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error("Failed to compress {} on host {}", filePath, host);
@@ -427,9 +467,9 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
         try {
             Session session = getSession(host);
 
-            runRmtCmd(session, cmd, false);
+            runLocalCommand(session, cmd, false);
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error("Failed to remove {} on host {}", filePath, host);
@@ -505,7 +545,7 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
         try {
             Session session = getSession(host);
 
-            runRmtCmd(session, "mkdir -p " + dstDir, true);
+            runLocalCommand(session, "mkdir -p " + dstDir, true);
 
             ChannelSftp sftpChannel = (ChannelSftp)session.openChannel("sftp");
             sftpChannel.connect(SSH_CHANNEL_TIMEOUT);
@@ -540,7 +580,7 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
             }
             sftpChannel.disconnect();
 
-            session.disconnect();
+            if(session != null) session.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to copy directory %s on the host %s", srcDir, host), e);
@@ -577,9 +617,9 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
         try {
             Session ses = getSession(host);
 
-            List<String> pidList = runRmtCmd(
+            List<String> pidList = runLocalCommand(
                     ses,
-                    String.format("pgrep -a 'java' | grep %s | awk '{print $1}'", filter),
+                    String.format("pgrep -a 'java'"),
                     true);
 
             for (String pid : pidList) {
@@ -597,7 +637,8 @@ public class RemoteSshExecutor extends AbstractCmdExecutor {
                 }
             }
 
-            ses.disconnect();
+            if (ses != null)
+                ses.disconnect();
         }
         catch (Exception e) {
             LOG.error(String.format("Failed to get pid map from the host %s", host), e);
